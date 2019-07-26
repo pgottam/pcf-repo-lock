@@ -1,0 +1,51 @@
+resources:
+- name: lock
+  type: pool
+  source:
+    uri: https://github.com/aaa-ncnu-ie/pcf-lock-repo
+    branch: master
+    username: ((github_username))
+    password: ((github_token))
+    pool: locks/((lock_pool_name))
+    retry_delay: 1m
+
+jobs:
+- name: force-unlock
+  plan:
+  - get: lock
+    trigger: true
+  - put: lock
+    params:
+      release: lock
+- name: lock-director
+  serial: true
+  plan:
+  - aggregate:
+    - put: lock
+      params: {acquire: true}
+    - get: lock
+      passed: [force-unlock]
+- name: HelloWorld
+  public: true
+  plan:
+    - get: lock
+      passed: [lock-director]
+    - task: PrintItOut
+      config:
+        platform: linux
+        image_resource:
+          type: registry-image
+          source: { repository: busybox }
+        run:
+          path: echo
+          args: ["Hello, World!"]
+- name: unlock-director
+  serial: true
+  plan:
+  - get: lock
+    trigger: true
+    passed:
+      - HelloWorld
+  - put: lock
+    params:
+      release: lock
